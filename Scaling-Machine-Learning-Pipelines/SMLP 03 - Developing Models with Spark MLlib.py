@@ -39,6 +39,7 @@
 # COMMAND ----------
 
 feature_vector_train_df = spark.read.format("delta").load(lesson_3_train_feature_vector_path)
+display(feature_vector_train_df)
 
 # COMMAND ----------
 
@@ -69,6 +70,10 @@ lr_model = lr.fit(feature_vector_train_df)
 
 predictions_train_df = lr_model.transform(feature_vector_train_df).select("price", "prediction")
 display(predictions_train_df)
+
+# COMMAND ----------
+
+display(lr_model.transform(feature_vector_train_df))
 
 # COMMAND ----------
 
@@ -143,7 +148,7 @@ missing_values_logic = [count(when(col(column).isNull(), column)).alias(column) 
 row_dict = train_df.select(missing_values_logic).first().asDict()
 missing_cols = [column for column in row_dict if row_dict[column] > 0]
 
-# Create the imputer
+# Create the imputer and impute values in place
 imputer = Imputer(strategy="median", inputCols=missing_cols, outputCols=missing_cols)
 
 # COMMAND ----------
@@ -204,6 +209,21 @@ display(train_preds_df)
 
 test_preds_df = pipeline_model.transform(test_df).select("price", "prediction")
 display(test_preds_df)
+
+# COMMAND ----------
+
+evaluator = RegressionEvaluator(predictionCol="prediction", labelCol="price")
+rmse_test_preds = evaluator.setMetricName("rmse").evaluate(test_preds_df)
+
+r2_test_preds = evaluator.setMetricName("r2").evaluate(test_preds_df)
+
+# COMMAND ----------
+
+print(type(rmse_test_preds))
+print(rmse_test_preds)
+
+print(type(r2_test_preds))
+print(r2_test_preds)
 
 # COMMAND ----------
 

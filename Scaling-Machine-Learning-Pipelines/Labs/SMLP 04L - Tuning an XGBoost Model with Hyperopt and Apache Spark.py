@@ -83,10 +83,12 @@ from sklearn.metrics import make_scorer, mean_squared_error
 from numpy import mean
 from hyperopt import STATUS_OK
 
-def objective_function(<FILL_IN>):
+def objective_function(params):
 
     # Set the hyperparameters that we want to tune:
-    <FILL_IN>
+    max_depth = int(params["max_depth"])
+    n_estimators = int(params["n_estimators"])
+    learning_rate = params["learning_rate"]
 
     regressor = xgb.XGBRegressor(n_estimators=n_estimators, max_depth=max_depth, learning_rate=learning_rate)
 
@@ -94,7 +96,7 @@ def objective_function(<FILL_IN>):
     mse_scorer = make_scorer(mean_squared_error, squared=False)
     cv_rmse = mean(cross_val_score(regressor, X_train, y_train, scoring=mse_scorer, cv=3))
     
-    return <FILL_IN>
+    return {"loss": cv_rmse, "status": STATUS_OK}
 
 # COMMAND ----------
 
@@ -136,13 +138,13 @@ def objective_function(<FILL_IN>):
 from hyperopt import hp
 from numpy import log
 
-learning_rate_min = log(<FILL_IN>)
-learning_rate_max = log(<FILL_IN>)
+learning_rate_min = log(0.01)
+learning_rate_max = log(1)
 
 search_space = {
-    "max_depth": <FILL_IN>,
-    "n_estimators": <FILL_IN>,
-    "learning_rate": <FILL_IN>
+    "max_depth": hp.quniform("max_depth", 2, 10, 1),
+    "n_estimators": hp.quniform("n_estimators", 5, 25, 1),
+    "learning_rate": hp.loguniform("learning_rate", learning_rate_min, learning_rate_max)
 }
 
 # COMMAND ----------
@@ -171,24 +173,23 @@ import mlflow
 mlflow.set_experiment("/Users/" + username + "/SMLP-Lab-4")
 with mlflow.start_run():
     # The number of models we want to evaluate
-    num_evals = <FILL_IN>
- 
+    num_evals = 32 
     # Set the number of models to be trained concurrently
-    spark_trials = <FILL_IN>
+    spark_trials = SparkTrials(parallelism=4)
  
     # Run the optimization process
     best_hyperparam = fmin(
-        fn=<FILL_IN>, 
-        space=<FILL_IN>,
-        algo=<FILL_IN>, 
-        trials=<FILL_IN>,
-        max_evals=<FILL_IN>
+        fn=objective_function, 
+        space=search_space,
+        algo=tpe.suggest, 
+        trials=spark_trials,
+        max_evals=num_evals
     )
  
     # Get optimal hyperparameter values
-    best_max_depth = int(<FILL_IN>)
-    best_n_estimators = int(<FILL_IN>)
-    best_learning_rate = <FILL_IN>
+    best_max_depth = int(best_hyperparam["max_depth"])
+    best_n_estimators = int(best_hyperparam["n_estimators"])
+    best_learning_rate = best_hyperparam["learning_rate"]
  
     # Train model on entire training data
     regressor = xgb.XGBRegressor(

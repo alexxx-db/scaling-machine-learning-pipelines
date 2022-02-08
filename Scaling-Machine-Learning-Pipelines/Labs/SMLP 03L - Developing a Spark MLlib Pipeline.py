@@ -45,6 +45,11 @@ test_df = spark.read.format("delta").load(lab_3_test_path)
 
 # COMMAND ----------
 
+display(train_df)
+display(test_df)
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Exercises
 # MAGIC 
@@ -90,16 +95,16 @@ missing_output_cols = [column + "_na" for column in missing_cols]
 missing_value_indicator = MissingValueIndicator(inputCols=missing_cols, outputCols=missing_output_cols)
 
 # Instantiate the Imputer object
-imputer = <FILL_IN>
+imputer = Imputer(strategy="median", inputCols=missing_cols, outputCols=missing_cols)
 
 # Create the StringIndexer object
 categorical_cols = [column.name for column in train_df.schema.fields if column.dataType == StringType()]
 indexed_cols = [column + "_index" for column in categorical_cols]
-string_indexer = <FILL_IN>
+string_indexer = StringIndexer(inputCols=categorical_cols, outputCols=indexed_cols, handleInvalid="skip")
 
 # Create the VectorAssembler object
 feature_cols = double_cols + missing_output_cols + indexed_cols
-vector_assembler = <FILL_IN>
+vector_assembler = VectorAssembler(inputCols=feature_cols, outputCol="vectorizedFeatures")
 
 # COMMAND ----------
 
@@ -126,7 +131,7 @@ row_dict = train_df.select(cardinality_logic).first().asDict()
 max_cardinality = max(row_dict.values())
 
 # Instantiate RandomForestRegressor
-rfr = <FILL_IN>
+rfr = RandomForestRegressor(featuresCol="vectorizedFeatures", labelCol="price", maxBins=max_cardinality)
 
 # COMMAND ----------
 
@@ -150,19 +155,31 @@ rfr = <FILL_IN>
 
 # COMMAND ----------
 
+# DBTITLE 1,Train Model with CV in Pipeline
 # TODO
 # Load the necessary libraries
+from pyspark.ml import Pipeline
 from pyspark.ml.evaluation import RegressionEvaluator
 from pyspark.ml.tuning import CrossValidator, ParamGridBuilder
 
 # Create the ParamGrid
-param_grid = <FILL_IN>
+param_grid = (ParamGridBuilder()
+  .addGrid(rfr.maxDepth, [4,6,10])
+  .addGrid(rfr.numTrees, [10, 20, 50])
+  .build())
 
 # Create the RegressionEvaluator
-evaluator = <FILL_IN>
+evaluator = RegressionEvaluator(predictionCol="prediction", labelCol="price")
 
 # Create the CrossValidator
-cv = <FILL_IN>
+cv = CrossValidator(
+    estimator=rfr, 
+    evaluator=evaluator, 
+    estimatorParamMaps=param_grid,              
+    numFolds=3,
+    parallelism=2,
+    seed=42
+)
 
 # COMMAND ----------
 
@@ -185,11 +202,11 @@ cv = <FILL_IN>
 from pyspark.ml import Pipeline
 
 # Instantiate the Pipeline
-stages_list = <FILL_IN>
+stages_list = [missing_value_indicator, imputer, string_indexer, vector_assembler, cv]
 pipeline = Pipeline(stages=stages_list)
 
 # Fit the Pipeline
-pipeline_model = <FILL_IN>
+pipeline_model = pipeline.fit(train_df)
 
 # COMMAND ----------
 
@@ -206,16 +223,16 @@ pipeline_model = <FILL_IN>
 
 # TODO
 # Get train predictions
-train_preds = <FILL_IN>
+train_preds = pipeline_model.transform(train_df)
 
 # Evaluate the train RMSE
-train_rmse = <FILL_IN>
+train_rmse = evaluator.setMetricName("rmse").evaluate(train_preds)
 
 # Evaluate the test RMSE
-test_preds = <FILL_IN>
+test_preds = pipeline_model.transform(test_df)
 
 # Evaluate the train RMSE
-test_rmse = <FILL_IN>
+test_rmse = evaluator.setMetricName("rmse").evaluate(test_preds)
 
 # Print results
 print(f"Training RMSE = {train_rmse}")
@@ -228,3 +245,33 @@ print(f"Test RMSE = {test_rmse}")
 # MAGIC Apache, Apache Spark, Spark and the Spark logo are trademarks of the <a href="http://www.apache.org/">Apache Software Foundation</a>.<br/>
 # MAGIC <br/>
 # MAGIC <a href="https://databricks.com/privacy-policy">Privacy Policy</a> | <a href="https://databricks.com/terms-of-use">Terms of Use</a> | <a href="http://help.databricks.com/">Support</a>
+
+# COMMAND ----------
+
+# DBTITLE 1,Train Model with pipeline in CV
+#no data leakage
+pipeline_2 = Pipeline(stages=[missing_value_indicator, imputer, string_indexer, vector_assembler, rfr])
+
+cv_2 = CrossValidator(
+    estimator=pipeline_2, 
+    evaluator=evaluator, 
+    estimatorParamMaps=param_grid,              
+    numFolds=3,
+    parallelism=2,
+    seed=42
+)
+
+# COMMAND ----------
+
+cv_model = cv_2.fit(train_df)
+train_preds_2 = cv_model.transform(train_df)
+train_rmse = evaluator.setMetricName("rmse").evaluate(train_preds_2)
+train_r2 = evaluator.setMetricName("r2").evaluate(train_preds_2)
+
+test_preds_2 = cv_model.transform(test_df)
+test_rmse = evaluator.setMetricName("rmse").evaluate(test_preds_2)
+test_r2 = evaluator.setMetricName("r2").evaluate(test_preds_2)
+
+# COMMAND ----------
+
+

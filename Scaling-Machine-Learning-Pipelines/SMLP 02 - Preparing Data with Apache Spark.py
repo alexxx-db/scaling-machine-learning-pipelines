@@ -119,7 +119,9 @@ double_cols = [column.name for column in doubles_train_df.schema.fields if colum
 
 # Get a list of numeric columns with missing values
 missing_values_logic = [count(when(col(column).isNull(), column)).alias(column) for column in double_cols]
+#select apply missing logic to columns => creates aggregated table of null counts for each column. Then and take the first row, then convert to a dictionary
 row_dict = doubles_train_df.select(missing_values_logic).first().asDict()
+#take only dictionary keys with values > 0
 missing_cols = [column for column in row_dict if row_dict[column] > 0]
 
 # Loop through missing columns to create a new dummy column for missing values
@@ -128,6 +130,21 @@ for column in missing_cols:
     dummy_train_df = dummy_train_df.withColumn(column + "_na", when(col(column).isNull(), 1.0).otherwise(0.0))
     
 display(dummy_train_df)
+
+# COMMAND ----------
+
+# DBTITLE 1,Note on Accessing StructType/StructField Methods
+#returns structType
+print(type(doubles_train_df.schema))
+
+#returns list of structFields
+print(type(doubles_train_df.schema.fields))
+print(type(doubles_train_df.schema.fields[0]))
+
+#accessing structfield methods
+
+#dataType returns spark datatype of structField
+print(type(doubles_train_df.schema.fields[0].dataType))
 
 # COMMAND ----------
 
